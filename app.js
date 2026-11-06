@@ -2,15 +2,15 @@
  * Every page shows one prompt and three animations of the SAME letter and subject, each made for a
  * different action; the participant picks the one that performs the prompt.
  * Static, no server. Each participant gets their own random order of the pages and of the three
- * animations (A, B, C) on every page. A clip whose file does not exist yet shows as an empty slot. At the end the answers are saved
- * as a JSON file the participant downloads and sends back; collected files go in responses/.
+ * animations (A, B, C) on every page. A clip whose file does not exist yet shows as an empty slot. At the end the answers are sent
+ * to a Google Sheet (SUBMIT_URL, see userstudies/sheet_collector); a JSON download stays as a backup.
  * Progress is kept in this browser (localStorage) so a reload does not lose answers. */
 (function () {
   "use strict";
   const STUDY = "userstudy_2_prompt_dependence";
   const VERSION = 3;          // 3 = answers saved to git through the Worker (2026-11-06)
   const STORE = "us2_state_v" + VERSION;
-  const SUBMIT_URL = "";         // Cloudflare Worker that commits answers to git (userstudies/submit_worker); empty = download only
+  const SUBMIT_URL = "https://script.google.com/macros/s/AKfycbzAROXydxaAtQYXPOmOT-Eaym6FIzo-LJIo8dxoVcNalQQ2iUsAj95FqXgCMrapHKV61g/exec";         // Google Apps Script web app that adds answers to a Google Sheet (userstudies/sheet_collector); empty = download only
   const Q = window.STUDY_QUESTIONS || [];
   const BLOCKS = {
     prompt_dep: { title: "Which one follows the prompt?", note: "All three animations show the same letter and subject. They differ in how it moves." }
@@ -76,7 +76,9 @@
           el("li", {}, "Rank them from best to worst by how well their motion matches the action in the prompt. Click the best one first, then the second best; the last one is ranked for you."),
           el("li", {}, "Judge the motion: what is the letter doing? Small differences in shape or drawing quality do not matter here.")),
         el("p", {}, "There are " + Q.length + " pages and it takes about 5 minutes."),
-        el("p", { class: "muted small" }, "Your answers stay in this browser until the end, where you download them as a small file and send it back to us. Nothing else is recorded.")),
+        el("p", { class: "muted small" }, SUBMIT_URL
+          ? "Your answers stay in this browser until the end, when they are sent to us. Nothing else is recorded."
+          : "Your answers stay in this browser until the end, where you download them as a small file and send it back to us. Nothing else is recorded.")),
       el("div", { class: "nav" }, el("span"),
         el("button", { class: "btn", onclick: () => {
           state.started = state.started || new Date().toISOString();
@@ -187,11 +189,11 @@
       ta];
     const sig = JSON.stringify(data.answers);
     const isPreview = new URLSearchParams(location.search).has("preview");
-    function send() {                                   // store the answers in git through the Worker
+    function send() {                                   // add the answers to the Google Sheet
       if (!SUBMIT_URL || isPreview) { status.textContent = "Please download your answers and send the file back to us."; return; }
       if (state.submittedSig === sig) { status.textContent = "Your answers have been saved. Thank you, you can close this page."; return; }
       status.textContent = "Saving your answers..."; retry.style.display = "none";
-      fetch(SUBMIT_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: text })
+      fetch(SUBMIT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: text })   // plain text: no CORS preflight, which Apps Script cannot answer
         .then(r => r.json().then(j => { if (!(r.ok && j.ok)) throw new Error(j.error || String(r.status)); }))
         .then(() => { state.submittedSig = sig; save(); status.textContent = "Your answers have been saved. Thank you, you can close this page."; })
         .catch(() => { status.textContent = "We could not save your answers automatically. Please try again, or download them below and send the file to us."; retry.style.display = ""; });
